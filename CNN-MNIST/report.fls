@@ -1,0 +1,6 @@
+PWD /home/mathmonkeyliu/USTC-AI-homework/CNN-MNIST
+INPUT /home/mathmonkeyliu/.TinyTeX/texmf.cnf
+INPUT /home/mathmonkeyliu/.TinyTeX/texmf-dist/web2c/texmf.cnf
+INPUT /home/mathmonkeyliu/.TinyTeX/texmf-var/web2c/pdftex/pdflatex.fmt
+INPUT /home/mathmonkeyliu/USTC-AI-homework/CNN-MNIST/report.tex
+OUTPUT report.log

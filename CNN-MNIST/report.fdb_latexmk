@@ -1,0 +1,14 @@
+# Fdb version 4
+["pdflatex"] 1781617665.00787 "/home/mathmonkeyliu/USTC-AI-homework/CNN-MNIST/report.tex" "report.pdf" "report" 1781617665.07066 2
+  "/home/mathmonkeyliu/.TinyTeX/texmf-dist/web2c/texmf.cnf" 1770478701 43630 e9fa012910491fe5ae08a72c3c2997a7 ""
+  "/home/mathmonkeyliu/.TinyTeX/texmf-var/web2c/pdftex/pdflatex.fmt" 1780893715 2250861 0b0ba3850b6b907813283e4e22454d91 ""
+  "/home/mathmonkeyliu/.TinyTeX/texmf.cnf" 1780893697 637 edd806fb06a89761a6034e1968af9017 ""
+  "/home/mathmonkeyliu/USTC-AI-homework/CNN-MNIST/report.tex" 1781617094.80233 16583 7348014f0c9a96e8f592061f55f347d0 ""
+  "ctexart.cls" 0 -1 0 ""
+  "report.aux" 1781617657.00617 32 3985256e7290058c681f74d7a3565a19 "pdflatex"
+  "report.tex" 1781617094.80233 16583 7348014f0c9a96e8f592061f55f347d0 ""
+  (generated)
+  "report.aux"
+  "report.log"
+  "report.pdf"
+  (rewritten before read)
