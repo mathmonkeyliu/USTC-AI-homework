@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.6.8)  16 JUN 2026 13:54
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.6.8)  16 JUN 2026 14:53
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -22,11 +22,11 @@ l.2 ^^M
 
  
 Here is how much of TeX's memory you used:
- 18 strings out of 469836
- 330 string characters out of 5469318
- 428014 words of memory out of 5000000
- 29061 multiletter control sequences out of 15000+600000
+ 19 strings out of 469157
+ 416 string characters out of 5460244
+ 435362 words of memory out of 5000000
+ 29127 multiletter control sequences out of 15000+600000
  627721 words of font info for 40 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  19i,0n,29p,84b,17s stack positions out of 10000i,1000n,20000p,200000b,200000s
-No pages of output.
+!  ==> Fatal error occurred, no output PDF file produced!

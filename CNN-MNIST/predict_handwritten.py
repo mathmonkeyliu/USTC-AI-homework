@@ -11,10 +11,17 @@ from model import get_model_by_name
 
 def preprocess_image(path: Path, invert: bool) -> torch.Tensor:
     image = Image.open(path).convert("L")
+    image = ImageOps.autocontrast(image)
     if invert:
         image = ImageOps.invert(image)
-    image = ImageOps.autocontrast(image)
-    image = image.resize((28, 28))
+    image = image.point(lambda pixel: 255 if pixel > 100 else 0)
+
+    bbox = image.getbbox()
+    if bbox is not None:
+        image = image.crop(bbox)
+    image.thumbnail((20, 20), Image.Resampling.LANCZOS)
+    canvas = Image.new("L", (28, 28), 0)
+    canvas.paste(image, ((28 - image.width) // 2, (28 - image.height) // 2))
 
     transform = transforms.Compose(
         [
@@ -23,14 +30,14 @@ def preprocess_image(path: Path, invert: bool) -> torch.Tensor:
         ]
     )
     
-    return transform(image).unsqueeze(0) # type: ignore
+    return transform(canvas).unsqueeze(0) # type: ignore
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Predict handwritten digit images.")
     parser.add_argument("--config", default="config/config_1_model_1.yaml")
     parser.add_argument("--image-dir", default="numbersbyHAND")
-    parser.add_argument("--checkpoint", default="model/mnist_cnn_config_1_model_1.pth")
+    parser.add_argument("--checkpoint", default=None)
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parent
