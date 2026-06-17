@@ -1,0 +1,345 @@
+\documentclass[UTF8,a4paper,12pt]{ctexart}
+
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{subcaption}
+\usepackage{array}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showstringspaces=false,
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{基于深度 Q 网络的经典控制任务实验报告}
+\author{姓名：\underline{刘泽睿} \quad 学号：\underline{PB24000157}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本实验实现了深度 Q 网络（Deep Q-Network, DQN），并在
+\texttt{CartPole-v1}、\texttt{MountainCar-v0} 和 \texttt{Acrobot-v1}
+三个经典控制环境上进行验证。项目按照配置驱动的实验结构组织：
+超参数写入 \texttt{config/dqn\_all.yaml}，日志保存至 \texttt{logs/}，
+模型权重保存至 \texttt{models/}，训练曲线、TensorBoard 文件和结果表保存至 \texttt{runs/}。
+算法部分采用经验回放、目标网络和 $\epsilon$-greedy 策略完成 DQN 更新；
+为提高稀疏奖励任务的采样效率，训练前使用简单控制器构造示范轨迹并进行 warm start。
+在 20 回合独立测试中，三个环境的成功率分别为
+\textbf{100\%}、\textbf{100\%} 和 \textbf{95\%}，
+均超过实验要求的 80\%。
+完整代码已开源至 \url{https://github.com/mathmonkeyliu/USTC-AI-homework}。
+\end{abstract}
+
+\tableofcontents
+
+\section{引言}
+
+强化学习研究智能体如何通过与环境交互学习决策策略。
+对于离散动作空间任务，Q-learning 通过估计状态--动作价值函数 $Q(s,a)$
+选择长期回报最高的动作。然而，经典控制环境的状态通常是连续变量，
+表格型 Q-learning 难以直接应用。DQN 使用神经网络近似 $Q(s,a)$，
+从而将 Q-learning 扩展到连续状态空间。
+
+本实验选择 Gymnasium 中三个经典控制任务作为评测环境。
+\texttt{CartPole-v1} 要求通过左右移动小车保持倒立杆平衡；
+\texttt{MountainCar-v0} 要求小车利用动量到达山顶；
+\texttt{Acrobot-v1} 要求双连杆系统通过摆动使末端达到目标高度。
+三者均为连续状态、离散动作任务，适合检验 DQN 的实现正确性与训练稳定性。
+
+\section{代码主要思路}
+
+\subsection{项目结构}
+
+本实验参考 \texttt{CNN-MNIST} 的组织方式，将配置、日志、模型和运行结果分离。
+项目结构如下：
+
+\begin{verbatim}
+DQN/
+|-- config/
+|   `-- dqn_all.yaml
+|-- logs/
+|   `-- dqn_all.log
+|-- models/
+|   `-- dqn_all/
+|-- runs/
+|   `-- dqn_all/
+|-- DQN.py
+|-- main.py
+|-- train.py
+|-- play.py
+|-- log.py
+`-- report.tex
+\end{verbatim}
+
+\texttt{main.py} 负责读取 YAML 配置、初始化日志和 TensorBoard；
+\texttt{train.py} 负责训练、评估、保存结果；
+\texttt{DQN.py} 定义经验回放池、Q 网络和 DQN 更新逻辑；
+\texttt{play.py} 用于加载保存的 checkpoint 并独立测试策略。
+
+\subsection{DQN 算法}
+
+DQN 使用神经网络 $Q_\theta(s,a)$ 近似动作价值函数。
+每次从经验回放池中采样 transition $(s,a,r,s',d)$，其中 $d$ 表示 episode 是否结束。
+TD 目标为
+\begin{equation}
+    y = r + \gamma(1-d)\max_{a'}Q_{\theta^-}(s',a'),
+\end{equation}
+其中 $Q_{\theta^-}$ 是目标网络。在线网络通过最小化均方 TD 误差更新：
+\begin{equation}
+    L(\theta)=\mathbb{E}\left[(Q_\theta(s,a)-y)^2\right].
+\end{equation}
+
+经验回放用于降低连续样本之间的相关性，目标网络用于稳定 TD 目标。
+训练中还使用梯度裁剪，避免 Q 值更新过大导致训练震荡。
+
+\subsection{网络结构与动作选择}
+
+Q 网络采用两层隐藏层的多层感知机：
+\begin{verbatim}
+state -> Linear(64) -> ReLU -> Linear(64) -> ReLU -> Linear(action_dim)
+\end{verbatim}
+
+网络输出每个离散动作的 Q 值。训练阶段采用 $\epsilon$-greedy 策略：
+\begin{equation}
+    a =
+    \begin{cases}
+    \text{exploration action}, & \text{with probability } \epsilon,\\
+    \arg\max_a Q_\theta(s,a), & \text{otherwise}.
+    \end{cases}
+\end{equation}
+
+本实验在 warm start 之后逐步降低 $\epsilon$，测试阶段固定为贪心策略。
+
+\subsection{稀疏奖励任务处理}
+
+\texttt{MountainCar-v0} 和 \texttt{Acrobot-v1} 的奖励较稀疏，完全依赖随机探索时有效轨迹很少。
+因此实验采用了两种辅助策略：
+
+\begin{enumerate}
+    \item 使用简单控制器产生示范轨迹，初始化 replay buffer，并用监督信号对 Q 网络做 warm start；
+    \item 对训练奖励加入轻量势函数塑形，帮助网络更快区分有利状态转移。
+\end{enumerate}
+
+这些辅助只用于训练阶段。最终报告中的平均回报与成功率均来自原始环境评估。
+
+\section{实验设计}
+
+\subsection{实验环境}
+
+\begin{table}[H]
+\centering
+\caption{经典控制环境信息}
+\label{tab:envs}
+\begin{tabular}{lccc}
+\toprule
+环境 & 状态维度 & 动作数 & 成功判定 \\
+\midrule
+\texttt{CartPole-v1} & 4 & 2 & 回合回报 $\geq 475$ \\
+\texttt{MountainCar-v0} & 2 & 3 & 小车到达目标位置 \\
+\texttt{Acrobot-v1} & 6 & 3 & 环境触发成功终止 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{超参数配置}
+
+实验超参数由 \texttt{config/dqn\_all.yaml} 管理。
+公共配置如表~\ref{tab:common_config} 所示，各环境差异配置如表~\ref{tab:env_config} 所示。
+
+\begin{table}[H]
+\centering
+\caption{公共训练配置}
+\label{tab:common_config}
+\begin{tabular}{lc}
+\toprule
+参数 & 取值 \\
+\midrule
+随机种子 & 42 \\
+经验池容量 & 50000 \\
+warm start 示范回合数 & 12 \\
+warm start 训练轮数 & 60 \\
+合成状态数量 & 4000 \\
+测试回合数 & 20 \\
+优化器 & Adam \\
+批大小 & 32 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{各环境训练配置}
+\label{tab:env_config}
+\begin{tabular}{lccccc}
+\toprule
+环境 & 训练回合数 & TD 更新次数 & 学习率 & 折扣因子 & 目标网络更新间隔 \\
+\midrule
+\texttt{CartPole-v1} & 36 & 450 & 0.001 & 0.98 & 10 \\
+\texttt{MountainCar-v0} & 36 & 450 & 0.001 & 0.99 & 5 \\
+\texttt{Acrobot-v1} & 60 & 750 & 0.001 & 0.99 & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+完整运行命令如下：
+\begin{verbatim}
+cd /home/mathmonkeyliu/USTC-AI-homework/DQN
+uv run python main.py --config config/dqn_all.yaml
+\end{verbatim}
+
+\section{实验结果展示与分析}
+
+\subsection{总体结果}
+
+表~\ref{tab:results} 展示了最新实验输出 \texttt{runs/dqn\_all/results.csv}
+中的测试结果。三种环境均达到 80\% 以上成功率。
+
+\begin{table}[H]
+\centering
+\caption{DQN 在三个环境上的测试结果}
+\label{tab:results}
+\begin{tabular}{lccc}
+\toprule
+环境 & 末 6 回合训练平均回报 & 测试平均回报 & 测试成功率 \\
+\midrule
+\texttt{CartPole-v1} & 172.17 & 500.00 & \textbf{100\%} \\
+\texttt{MountainCar-v0} & -158.50 & -122.10 & \textbf{100\%} \\
+\texttt{Acrobot-v1} & -383.67 & -134.05 & \textbf{95\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{CartPole-v1} 的测试平均回报达到环境上限 500，说明学到的策略能够稳定保持杆平衡。
+\texttt{MountainCar-v0} 的平均回报为 -122.10，远好于失败时的 -200，
+且 20 回合测试全部到达目标位置。
+\texttt{Acrobot-v1} 的平均回报为 -134.05，成功率为 95\%，说明策略基本掌握了通过摆动积累能量的控制方式。
+
+\subsection{训练过程}
+
+日志 \texttt{logs/dqn\_all.log} 记录了训练过程中的分段平均回报。
+例如，\texttt{CartPole-v1} 在第 24 回合附近达到 6 回合平均回报 500；
+\texttt{MountainCar-v0} 的训练回报在 -150 到 -190 区间波动；
+\texttt{Acrobot-v1} 的回报方差更大，但最终测试成功率仍达到 95\%。
+
+图~\ref{fig:curves}--图~\ref{fig:acrobot_curve} 给出了三个环境的训练回报曲线。
+由于模型保存时会比较 warm start 策略与后续 DQN 更新后的评估效果，并保留更优策略，
+因此训练末段回报不一定严格等于最终测试性能。
+为了避免图例遮挡曲线，三张曲线图均采用统一的右上角图例位置，并在坐标轴上方保留额外留白。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.86\textwidth]{runs/dqn_all/CartPole-v1/rewards.png}
+    \caption{\texttt{CartPole-v1} 训练回报曲线。}
+    \label{fig:curves}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.86\textwidth]{runs/dqn_all/MountainCar-v0/rewards.png}
+    \caption{\texttt{MountainCar-v0} 训练回报曲线。}
+    \label{fig:mountain_curve}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.86\textwidth]{runs/dqn_all/Acrobot-v1/rewards.png}
+    \caption{\texttt{Acrobot-v1} 训练回报曲线。}
+    \label{fig:acrobot_curve}
+\end{figure}
+
+\subsection{分析}
+
+\texttt{CartPole-v1} 奖励密集，状态维度较低，杆角度和角速度与动作选择关系直接，
+因此 DQN 很容易学习到稳定策略。训练中虽然末段探索回合导致平均回报下降，
+但保存的最佳模型在测试中达到满分。
+
+\texttt{MountainCar-v0} 的关键是利用速度方向进行摆动蓄能。
+如果仅用随机探索，智能体很难早期到达山顶；warm start 使经验池中包含有效轨迹，
+奖励塑形进一步提供了关于位置和速度变化的局部学习信号。
+最终测试成功率达到 100\%。
+
+\texttt{Acrobot-v1} 的控制延迟更长，动作对末端高度的影响需要多步才能体现。
+训练回报波动明显，说明该任务比前两个环境更难。
+不过示范轨迹初始化和目标网络稳定更新使策略能够保持较高成功率，最终达到 95\%。
+
+\section{思考题解答}
+
+\subsection{经验回放的作用是什么？}
+
+经验回放池将智能体交互得到的 transition 保存起来，并在训练时随机采样 mini-batch。
+这有两个作用：首先，它打破相邻样本之间的时间相关性，使神经网络训练更接近监督学习中的独立采样；
+其次，它允许同一条经验被多次利用，提高样本效率。
+对于 \texttt{MountainCar-v0} 和 \texttt{Acrobot-v1} 这类探索成本较高的任务，经验回放尤其重要。
+
+\subsection{为什么需要目标网络？}
+
+DQN 的 TD 目标中包含 $\max_{a'}Q(s',a')$。
+如果在线网络同时用于预测当前 Q 值和构造目标值，目标会随着每次梯度更新快速变化，
+容易造成训练震荡。目标网络在若干步内保持固定，只周期性同步在线网络参数，
+相当于为 TD 更新提供较稳定的监督信号。
+
+\subsection{奖励塑形是否改变了测试结果？}
+
+奖励塑形只影响训练阶段的梯度信号，不改变环境本身的转移函数和测试阶段的原始回报统计。
+本实验报告中的测试平均回报和成功率均由原始 Gymnasium 环境产生。
+因此，奖励塑形的作用是提高学习效率，而不是直接改变评测指标。
+
+\section{结论}
+
+本实验完成了 DQN 的核心实现，并将项目整理为配置驱动、日志可追踪、结果可复现的结构。
+通过 \texttt{config/dqn\_all.yaml} 统一管理超参数，实验输出分别保存到
+\texttt{logs/}、\texttt{models/} 和 \texttt{runs/}。
+在三个经典控制环境上，最终测试成功率分别为 100\%、100\% 和 95\%，
+均满足实验要求。实验结果表明，DQN 适用于连续状态、离散动作的控制任务；
+在稀疏奖励环境中，合理的 replay 初始化和奖励塑形可以显著提高训练效率。
+
+\appendix
+\section{附录：关键文件}
+
+\subsection{\texttt{config/dqn\_all.yaml}}
+\lstinputlisting[caption=config/dqn\_all.yaml]{config/dqn_all.yaml}
+
+\subsection{\texttt{DQN.py}}
+\lstinputlisting[language=Python, caption=DQN.py]{DQN.py}
+
+\subsection{\texttt{main.py}}
+\lstinputlisting[language=Python, caption=main.py]{main.py}
+
+\subsection{\texttt{train.py}}
+\lstinputlisting[language=Python, caption=train.py]{train.py}
+
+\subsection{\texttt{play.py}}
+\lstinputlisting[language=Python, caption=play.py]{play.py}
+
+\subsection{\texttt{log.py}}
+\lstinputlisting[language=Python, caption=log.py]{log.py}
+
+\end{document}

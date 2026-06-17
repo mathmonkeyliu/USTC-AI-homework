@@ -1,0 +1,42 @@
+run_name: dqn_all
+
+paths:
+  logs: logs
+  models: models
+  runs: runs
+
+train:
+  seed: 42
+  replay_capacity: 50000
+  warm_start_episodes: 12
+  warm_start_epochs: 60
+  synthetic_states: 4000
+  eval_episodes: 20
+
+envs:
+  CartPole-v1:
+    episodes: 36
+    lr: 0.001
+    hidden: 64
+    gamma: 0.98
+    target: 10
+    batch: 32
+    updates: 450
+
+  MountainCar-v0:
+    episodes: 36
+    lr: 0.001
+    hidden: 64
+    gamma: 0.99
+    target: 5
+    batch: 32
+    updates: 450
+
+  Acrobot-v1:
+    episodes: 60
+    lr: 0.001
+    hidden: 64
+    gamma: 0.99
+    target: 5
+    batch: 32
+    updates: 750
